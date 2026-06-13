@@ -1,0 +1,18 @@
+# ---- Personal financial data: never upload these ----
+*.pdf
+*.xlsx
+*.xls
+*.csv
+spending.xlsx
+statement*
+
+# ---- Python ----
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+
+# ---- Editor ----
+.vscode/
+.DS_Store
