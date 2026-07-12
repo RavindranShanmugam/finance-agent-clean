@@ -15,6 +15,9 @@ import streamlit as st
 import finance_brain as brain
 from demo_data import demo_dataframe, NON_SPEND
 
+# set_page_config MUST be the very first Streamlit command in the script.
+st.set_page_config(page_title="Ravs Finance Agent", page_icon="💸", layout="wide")
+
 MASTER = "spending.xlsx"
 
 CATEGORY_EMOJI = {
@@ -71,8 +74,6 @@ CATEGORIES = sorted(spend["Category"].unique())
 
 
 # ---------- PAGE ----------
-st.set_page_config(page_title="Ravs Finance Agent", page_icon="💸", layout="wide")
-
 st.title("💸 Ravs Finance Agent")
 st.markdown(
     "**Ask your money questions in plain English.** "
