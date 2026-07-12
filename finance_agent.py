@@ -100,7 +100,7 @@ st.bar_chart(chart_df, color="#10b981", horizontal=True)
 with st.expander("🔎 See the transactions behind these numbers"):
     view = spend[["Date", "Description", "Category", "Spent"]].copy()
     view["Category"] = view["Category"].map(lambda c: f"{CATEGORY_EMOJI.get(c, '🏷️')} {c}")
-    st.dataframe(view, use_container_width=True, hide_index=True)
+    st.dataframe(view, width="stretch", hide_index=True)
 
 # ---- Ask the agent ----
 st.subheader("💬 Ask the agent")
@@ -116,7 +116,7 @@ SUGGESTIONS = [
     "How much on subscriptions?",
 ]
 for col, s in zip(cols, SUGGESTIONS):
-    if col.button(s, use_container_width=True):
+    if col.button(s, width="stretch"):
         st.session_state["question"] = s
 
 question = st.text_input(
