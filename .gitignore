@@ -13,6 +13,10 @@ __pycache__/
 venv/
 env/
 
+# ---- Secrets: never upload API keys ----
+.streamlit/secrets.toml
+.env
+
 # ---- Editor ----
 .vscode/
 .DS_Store

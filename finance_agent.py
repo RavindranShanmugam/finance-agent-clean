@@ -1,29 +1,47 @@
 """
-finance_agent.py  -  Chat with your real spending in plain English.
+finance_agent.py  -  Ravs Finance Agent (web).
 
-WHAT IT DOES
-  Reads spending.xlsx (the file import_statement.py builds) and lets you ask
-  questions like "what did I spend most on?" or "how much on coffee?".
-  The AI decides which tool to use; Python does the math.
+Chat with your spending in plain English. The AI decides which tool to run;
+Python does the math, so the dollar figures are always exact.
 
-RUN IT WITH:   streamlit run finance_agent.py
+RUN LOCALLY:   streamlit run finance_agent.py     (uses Ollama - free & private)
+DEPLOYED:      falls back to Claude (if a key is set) or a free keyword router,
+               so the public "try it yourself" version always works.
 """
+import os
 import pandas as pd
 import streamlit as st
-import ollama
+
+import finance_brain as brain
+from demo_data import demo_dataframe, NON_SPEND
 
 MASTER = "spending.xlsx"
-MODEL = "llama3.2"
-# Money out but NOT everyday spending (so they don't drown out the real picture):
-NON_SPEND = ["Investing", "Transfers / Other", "Fees"]
 
-# ---- LOAD THE DATA ONCE ----
-df = pd.read_excel(MASTER, sheet_name="Transactions")
-# "spend" = only real spending: money out, excluding investing/transfers/fees
-spend = df[(df["Amount"] < 0) & (~df["Category"].isin(NON_SPEND))].copy()
-spend["Spent"] = spend["Amount"].abs()
+CATEGORY_EMOJI = {
+    "Coffee & Cafe": "☕", "Fast Food / Dining": "🍔", "Groceries": "🛒",
+    "Gas & Convenience": "⛽", "Shopping / Retail": "🛍️", "Software & Subs": "💳",
+    "Phone": "📱", "Shipping": "📦", "Uncategorized": "❓",
+}
 
-# ---- THE TOOLS (plain Python, accurate every time) ----
+
+# ---------- DATA (real xlsx if present, else the safe in-memory demo) ----------
+@st.cache_data
+def load_spending():
+    if os.path.exists(MASTER):
+        df = pd.read_excel(MASTER, sheet_name="Transactions")
+        source = "spending.xlsx"
+    else:
+        df = demo_dataframe()          # works on Streamlit Cloud with no data file
+        source = "demo data"
+    spend = df[(df["Amount"] < 0) & (~df["Category"].isin(NON_SPEND))].copy()
+    spend["Spent"] = spend["Amount"].abs()
+    return spend, source
+
+
+spend, data_source = load_spending()
+
+
+# ---------- TOOLS (plain Python, exact every time) ----------
 def total_spent() -> str:
     """Return the total amount of real spending across all categories."""
     return f"Total spending is ${spend['Spent'].sum():.2f}"
@@ -35,7 +53,6 @@ def top_spending() -> str:
 
 def category_total(category: str) -> str:
     """Return how much was spent in one category, e.g. 'Coffee', 'Dining', 'Gas'."""
-    # match loosely so 'coffee' finds 'Coffee & Cafe', 'gas' finds 'Gas & Convenience'
     cats = spend["Category"].unique()
     match = next((c for c in cats if category.lower() in c.lower()), None)
     if match is None:
@@ -48,42 +65,73 @@ def biggest_purchases() -> str:
     top = spend.sort_values("Spent", ascending=False).head(5)
     return top[["Date", "Description", "Spent"]].to_string(index=False)
 
-AVAILABLE = {
-    "total_spent": total_spent,
-    "top_spending": top_spending,
-    "category_total": category_total,
-    "biggest_purchases": biggest_purchases,
-}
+TOOLS = {"total_spent": total_spent, "top_spending": top_spending,
+         "category_total": category_total, "biggest_purchases": biggest_purchases}
+CATEGORIES = sorted(spend["Category"].unique())
 
-# ---- THE WEB PAGE ----
-st.title("Finance Agent")
-st.caption(f"Reading {MASTER} - {len(spend)} spending transactions")
 
-with st.expander("See my spending data"):
-    st.dataframe(spend[["Date", "Description", "Category", "Spent"]])
+# ---------- PAGE ----------
+st.set_page_config(page_title="Ravs Finance Agent", page_icon="💸", layout="wide")
 
-question = st.text_input("Ask about your spending:",
-                         placeholder="e.g. What did I spend most on?")
+st.title("💸 Ravs Finance Agent")
+st.markdown(
+    "**Ask your money questions in plain English.** "
+    "A local AI picks the right tool — Python does the math, so the numbers are always exact."
+)
+if data_source == "demo data":
+    st.caption("🧪 Showing demo data — nothing here is a real transaction.")
+
+# ---- KPI tiles ----
+by_cat = spend.groupby("Category")["Spent"].sum().sort_values(ascending=False)
+top_cat = by_cat.index[0]
+biggest = spend.loc[spend["Spent"].idxmax()]
+
+k1, k2, k3, k4 = st.columns(4)
+k1.metric("💰 Total spent", f"${spend['Spent'].sum():,.2f}")
+k2.metric("🧾 Transactions", f"{len(spend)}")
+k3.metric(f"{CATEGORY_EMOJI.get(top_cat, '🏷️')} Top category", top_cat, f"${by_cat.iloc[0]:,.0f}")
+k4.metric("🔺 Biggest purchase", biggest["Description"][:18], f"${biggest['Spent']:,.0f}")
+
+# ---- Spending-by-category chart ----
+st.subheader("📊 Where the money went")
+chart_df = by_cat.rename(index=lambda c: f"{CATEGORY_EMOJI.get(c, '🏷️')} {c}").to_frame("Spent ($)")
+st.bar_chart(chart_df, color="#10b981", horizontal=True)
+
+with st.expander("🔎 See the transactions behind these numbers"):
+    view = spend[["Date", "Description", "Category", "Spent"]].copy()
+    view["Category"] = view["Category"].map(lambda c: f"{CATEGORY_EMOJI.get(c, '🏷️')} {c}")
+    st.dataframe(view, use_container_width=True, hide_index=True)
+
+# ---- Ask the agent ----
+st.subheader("💬 Ask the agent")
+_, brain_label = brain.active_brain()
+st.caption(f"Brain in use: **{brain_label}**")
+
+st.session_state.setdefault("question", "")
+cols = st.columns(4)
+SUGGESTIONS = [
+    "What did I spend the most on?",
+    "How much on coffee?",
+    "What were my biggest purchases?",
+    "How much on subscriptions?",
+]
+for col, s in zip(cols, SUGGESTIONS):
+    if col.button(s, use_container_width=True):
+        st.session_state["question"] = s
+
+question = st.text_input(
+    "Ask about your spending:",
+    key="question",
+    placeholder="e.g. What did I spend most on?",
+)
 
 if question:
     with st.spinner("Thinking..."):
-        response = ollama.chat(
-            model=MODEL,
-            messages=[{"role": "user", "content": question}],
-            tools=[total_spent, top_spending, category_total, biggest_purchases],
-        )
-        msg = response["message"]
+        text, tool_name, tool_args, used_brain = brain.answer(question, TOOLS, CATEGORIES)
+    if tool_name:
+        arg_str = f"({tool_args or ''})" if tool_args else "()"
+        st.info(f"🛠️ The agent ran: **{tool_name}{arg_str}**  ·  {used_brain}")
+    st.success(text)
 
-        if msg.get("tool_calls"):
-            call = msg["tool_calls"][0]
-            name = call["function"]["name"]
-            args = call["function"]["arguments"]
-            result = AVAILABLE[name](**args)
-            st.info(f"The agent used: {name}({args or ''})")
-
-            final = ollama.chat(model=MODEL, messages=[{"role": "user", "content":
-                f"The user asked: '{question}'. Here is the real data:\n{result}\n"
-                "Answer them in one or two friendly sentences. Use the dollar amounts shown."}])
-            st.success(final["message"]["content"])
-        else:
-            st.success(msg["content"])
+st.divider()
+st.caption("Built by Ravi · Ravs Automation Agency — the AI decides, Python calculates.")

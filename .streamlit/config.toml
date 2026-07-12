@@ -1,0 +1,10 @@
+# Ravs Finance Agent — on-camera theme (clean dark + money-green accent)
+[theme]
+primaryColor = "#10b981"
+backgroundColor = "#0e1117"
+secondaryBackgroundColor = "#161b26"
+textColor = "#fafafa"
+font = "sans serif"
+
+[browser]
+gatherUsageStats = false
